@@ -1,0 +1,119 @@
+syntax = "proto3"; // the version at the time of writing
+
+package grpc;
+
+message Empty {}
+
+message ClientCredentials{
+    string clientId=1;
+    string clientName=2;
+    string clientToken=3;
+    string machineName=4;
+    string machineHW =5;
+}
+
+message FLInitializationParameters_{
+    int32 epochs = 1;
+    int32 rounds =2;
+    bytes initModel =3;
+
+}
+
+message Model {
+    ClientCredentials client = 1; // name of the person who wrote the message
+    bytes parameters = 2; // the actual message
+    int32 round=3;
+    bool trainingDone=4;
+    string resource_name=5;
+      /*
+     because model could be so large more the gRPC load size
+     it needed to be split to multiple chunks
+     */
+    int32 modelChunkCount = 6;
+    float act_time = 7;
+}
+
+message Pulse{
+    bool tic =1;
+}
+
+message FunctionReturns{
+    bool response = 1;
+    string reason =3;
+}
+
+
+message TrainingModelAndInitializationParams{
+    bytes nnModel=1;
+    bytes trainingFunc=2;
+    int32 epochs = 3;
+    int32 rounds = 4;
+    bytes initialModel=5;
+    float lr =6;
+    bytes criterion = 7;
+    bytes optimizer = 8;
+    string modelType =9;
+    int32 batchSize =10;
+    string folder_string=11;
+}
+
+message FunctionAgs{
+  bytes args1 = 2;
+  bytes args2 = 3;
+  bytes args3 = 4;
+}
+
+message RegistrationResponse{
+  bool registered=1;
+  string modelType =2;
+
+  string notes=3;
+
+}
+
+message FullName{
+    string name=1;
+    string names=2;
+    string clientId=3;
+}
+
+message PandasStore{
+    ClientCredentials client = 1;
+    bytes data = 2;
+}
+
+message RegistrationParams{
+     ClientCredentials clientCredentials = 1;
+     bool verbose = 2;
+     string resource_name=3;
+     int32 client_count =4;
+}
+
+service FederatedLearning {
+    rpc InitiateFlTraining (ClientCredentials) returns (FLInitializationParameters_);
+   // rpc GetLocalModel (Empty) returns (stream Model); // the call which is streaming (open connection)
+    rpc GlobalModel (Empty) returns (Model); // the call which is streaming (open connection)
+    //rpc SendGlobalModel (stream Model) returns (Empty);
+
+    rpc LocalModel (Model) returns (Model);
+    rpc TrailFunction (ClientCredentials) returns (FLInitializationParameters_);
+
+    rpc TransmitInitializationParams (ClientCredentials) returns (TrainingModelAndInitializationParams);
+    rpc ExecuteFunction (FunctionAgs) returns (FunctionReturns);
+
+    rpc Heartbeat (ClientCredentials) returns(FunctionReturns);
+    rpc ClientRegistration (RegistrationParams) returns(RegistrationResponse);
+    rpc GetNumberOfClients(Empty) returns(Empty);
+
+    rpc StartTraining(ClientCredentials) returns(FunctionReturns);
+
+    rpc GetPandasStore(PandasStore) returns (Empty);
+
+    //Added for parallel
+    rpc TheMessageCPU (Model) returns (Model){}
+    rpc TheMessageMemory (Model) returns (Model){}
+    rpc TheMessageNW (Model) returns (Model){}
+    rpc TheMessageDisk (Model) returns (Model){}
+
+
+}

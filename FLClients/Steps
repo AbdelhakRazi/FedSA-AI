@@ -1,0 +1,10 @@
+1 collect data
+2 run main -> train ->
+                      initialization (Client)
+                      .
+                      .
+                      start_training
+                      ready_to_start [client_multi_2]
+                      get_start_training <-true/false [Server]
+
+

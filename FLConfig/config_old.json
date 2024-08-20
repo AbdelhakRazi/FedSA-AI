@@ -1,0 +1,67 @@
+{
+  "network": {
+    "url_": "172.16.9.146",
+    "url": "[::]",
+    "port":3444
+  },
+
+  "COMMENTS_": "setting can be NONE, ROUND, BATCH, TIME, SAMPLE: select what's dependable ",
+  "setting": "ROUND",
+  "global_config":{"seed": 5959, "device": "cpu"},
+  "fed_config": {"C": 1, "K": 3, "R":100, "E": 50, "B": 64},
+  "optim_config": {"lr": 0.01, "momentum": 0.9, "optim": "ADAM"},
+  "dataset_shape":{"no_samples": 1000, "feature_size" : 3}  ,
+
+
+"running_mode":{
+		"mode": "batch",
+		"batch_size":50
+		},
+
+"physical_data_shape":{
+	"cpu": 15,
+        "memory": 11,
+        "network": 0,
+        "disk": 0
+	},   
+
+"container_data_shape":{
+	"cpu":0,
+	"memory":0,
+ 	"network":0,
+	"disk":0
+	},   
+
+"quantile":0.999,
+
+"rsc_target":"cpu",
+
+"layer":"physical",
+
+"data_splits_count":0,
+
+"split_label":"day",
+
+"kafka_parameter":{
+  "topic_name": "preprocessed_cpu_topic",
+  "bootstrap_server": "172.16.9.148",
+  "consumer_group": "preprocessed_cpu_group"
+},
+
+"file_paths":{
+    "train_data_dir_path":"Datasets",
+    "test_data_dir_file" :"Datasets",
+    "train_data_splits_path" :"Datasets/db_splits",
+    "train_data_dir_path_container" :"Datasets",
+    "train_data_dir_path_physical" :"Datasets",
+    "output_dir_path" : "Output",
+    "model_dir_path" : "Output/Models",
+    "analysis_dir_path" : "Output/Analysis",
+    "stress_dir": ""
+
+},
+
+"test_data_percentage": 0.005
+
+}
+

@@ -1,0 +1,69 @@
+{
+  "network": {
+    "url": "172.16.9.147",
+    "url_": "[::]",
+    "port":3444
+  },
+  
+  "clients":{
+  	
+  	"client_1":"student@172.16.9.149:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5",
+  	"client_2":"student@172.16.9.15:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5",
+  	"client_3":"student@172.16.9.146:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5"
+  },
+
+  "COMMENTS_": "setting can be NONE, ROUND, BATCH, TIME, SAMPLE: select what's dependable ",
+  "setting": "ROUND",
+  "global_config":{"seed": 5959, "device": "cpu"},
+  "fed_config": {"C": 1, "K": 3, "R":10, "E": 50, "B": 64, "aggregation_round":100},
+  "optim_config": {"lr": 0.01, "momentum": 0.9, "optim": "ADAM"},
+  "dataset_shape":{"no_samples": 1000, "feature_size" : 26},
+
+
+"running_mode":{
+		"mode": "batch",
+		"batch_size":50
+		},
+
+"physical_data_shape":{
+	"cpu": 26,
+        "memory": 11,
+        "network": 0,
+        "disk": 0
+	},   
+
+"container_data_shape":{
+	"cpu":0,
+	"memory":0,
+ 	"network":0,
+	"disk":0
+	},   
+
+"quantile":0.999,
+
+"rsc_target":"cpu",
+
+"layer":"physical",
+
+"data_splits_count":1,
+
+"split_label":"day",
+
+
+"file_paths":{
+    "train_data_dir_path":"Datasets",
+    "test_data_dir_file" :"Datasets",
+    "train_data_splits_path" :"Datasets/db_splits",
+    "train_data_dir_path_container" :"Datasets",
+    "train_data_dir_path_physical" :"Datasets",
+    "output_dir_path" : "Output",
+    "model_dir_path" : "Output/Models",
+    "analysis_dir_path" : "Output/Analysis",
+    "stress_dir": ""
+
+},
+
+"test_data_percentage": 0.005
+
+}
+
