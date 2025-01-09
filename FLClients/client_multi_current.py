@@ -869,6 +869,8 @@ class Client:
                     print(segment_training_data.shape)
 
                     if first_pass:
+                        csv_file_name = 'timestamp-values_'+str(self.rounds)+'.csv'
+                        utils.delete_csv_file(csv_file_name)
                         first_pass = False
                         l_model = self.select_training_frmwrk(segment_training_data, resource_name,self.global_model[resource_name])
                     else:
