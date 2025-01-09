@@ -253,6 +253,8 @@ class Client:
         self.file_part = 1  # used in a loop
 
         self.total_data_samples = 0
+        self.local_model_size = 0
+        self.global_model_size = 0
 
         # =======================  DANGEROUS ZONE ==============================
         # Old Python limits recursion depyh to 1000
@@ -266,7 +268,8 @@ class Client:
     def prepare_model_to_send(self, resource_name, local_model):
         # print(' In def get_model_chunks(self)')
         s_model = pickle.dumps(local_model)  # * random.randint(1, 10))
-        print(f'model size = {sys.getsizeof(s_model)}')
+        self.local_model_size = sys.getsizeof(s_model) 
+        print(f'model size = {self.local_model_size}')
 
         return tr.Model(resource_name=resource_name, parameters=s_model, client=self.client_crd, act_time=time.time())
 
@@ -300,6 +303,7 @@ class Client:
     def get_fl_global_model(self, resource_name, model):
         # print(self.model_type, "<+><"*30)
         # self.current_round = model.round
+        self.global_model_size = sys.getsizeof(pickle.loads(model)) 
         g_model = model.parameters
         global_model_weights = pickle.loads(g_model)
         self.global_model[resource_name].set_weights(global_model_weights)
@@ -383,6 +387,7 @@ class Client:
         # )
         print_orange(f"Model size {sys.getsizeof(tmf.initialModel):,} bytes")
         self.model_size = sys.getsizeof(tmf.initialModel)
+        self.global_model_size = self.model_size
 
         #
         #     return True
@@ -608,6 +613,7 @@ class Client:
             g_model = self.global_model[resource_name]
             # ----------------------------------------------
             init_model = pickle.loads(g_model)
+            self.global_model_size = sys.getsizeof(init_model) 
 
             self.global_model[resource_name] = init_model
 
@@ -891,7 +897,12 @@ class Client:
                         deployment_state["end_to_end_time"]=end_to_end_time
                         deployment_state["learning_time"]=learning_time
                         deployment_state["training_time"]=training_time
-                        
+
+                       
+                    column_names.append('local_model_size')
+                    column_names.append('global_model_size')
+                    column_values.append(self.local_model_size)
+                    column_values.append(self.global_model_size)
                     csv_file_name = 'timestamp-values_'+str(self.rounds)+'.csv'
                     utils.write_to_csv_file(csv_file_name,column_names,column_values)
                     self.current_epochs_before_aggregation = epoch_
