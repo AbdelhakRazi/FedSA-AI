@@ -43,8 +43,8 @@ URL = f['network']['url']
 PORT_NO = f['network']['port']
 
 fraction = fed_config["C"]
-#total_rounds = fed_config["R"]
-total_rounds = fed_config["aggregation_round"]
+total_rounds = fed_config["R"]
+aggregation_method = fed_config["M"]
 
 data_splits_count = f['data_splits_count']
 local_epochs = fed_config["E"]
@@ -120,6 +120,7 @@ def serve():
     # fl_server.set_training_function(bClass.train_model)
 
     fl_server.init_parameters(total_rounds=total_rounds,
+                              aggregation_method=aggregation_method,
                               data_splits_count=data_splits_count,
                               local_epochs=local_epochs,
                               batch_size=batch_size,

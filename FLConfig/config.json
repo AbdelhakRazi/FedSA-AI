@@ -15,7 +15,7 @@
   "COMMENTS_": "setting can be NONE, ROUND, BATCH, TIME, SAMPLE: select what's dependable ",
   "setting": "ROUND",
   "global_config":{"seed": 5959, "device": "cpu"},
-  "fed_config": {"C": 1, "K": 3, "R":10, "E": 50, "B": 64, "aggregation_round":10,"M":"sync"},
+  "fed_config": {"C": 1, "K": 3, "R":10, "E": 10, "B": 64,"M":"sync"},
   "optim_config": {"lr": 0.01, "momentum": 0.9, "optim": "ADAM"},
   "dataset_shape":{"no_samples": 1000, "feature_size" : 26},
 

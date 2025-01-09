@@ -122,6 +122,7 @@ class FLServer(FederatedLearningServicer):
         self.model_type = None
         self.fraction = None
         self.total_rounds = None
+        self.aggregation_method=None
         self.local_epochs = None
         self.batch_size = None
         self.lr = None
@@ -226,7 +227,7 @@ class FLServer(FederatedLearningServicer):
     def set_training_function(self, training_function):
         self.training_function = pickle.dumps(training_function)
 
-    def init_parameters(self, total_rounds, data_splits_count, local_epochs, batch_size=24, learning_rate=0.003,
+    def init_parameters(self, total_rounds,aggregation_method, data_splits_count, local_epochs, batch_size=24, learning_rate=0.003,
                         sampling_fraction=1,
                         optimizer='ADAM'):
         self.fraction = sampling_fraction
@@ -234,6 +235,7 @@ class FLServer(FederatedLearningServicer):
         # TODO [remember], as dataset is very large, is split into a number (14) files
         # the number of rounds should span all these files
         self.total_rounds = total_rounds * data_splits_count  # this will also be passed by clients.. TODO solve later
+        self.aggregation_method=aggregation_method
 
         self.local_epochs = local_epochs
         self.batch_size = batch_size
@@ -378,13 +380,18 @@ class FLServer(FederatedLearningServicer):
                 self.check_trying = False
                 print("\t\tcheck_trying", self.check_trying)
 
-            force_aggregation = client_count > 1 and (time.time() - self.do_wait) > MAX_WAITING_TIME_FOR_CLIENT_CONTRIBUTION \
-                                and not self.check_trying
+            force_aggregation = client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING and not self.check_trying
+
+            if self.aggregation_method=="async":
+            
+                force_aggregation = client_count > 1 and (time.time() - self.do_wait) >= MAX_WAITING_TIME_FOR_CLIENT_CONTRIBUTION \
+                                    and not self.check_trying
+    
             
             #if client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING or force_aggregation:
                       
-            if client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING or force_aggregation:  # or self.time_is_up():
-                # if client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING:  # or self.time_is_up():
+            if force_aggregation:  # or self.time_is_up():
+
                 #print(resource_name, ' in aggr')
                 if client_count > 0:
                     t_start = time.time()
