@@ -9,7 +9,7 @@ import subprocess
 from tensor_pb2 import (Model, Empty,
                         FunctionReturns,
                         RegistrationResponse,
-                        TrainingModelAndInitializationParams)
+                        TrainingModelAndInitializationParams, ModelResponse)
 
 from tensor_pb2_grpc import (FederatedLearningServicer,
                              add_FederatedLearningServicer_to_server)
@@ -132,6 +132,7 @@ class FLServer(FederatedLearningServicer):
         self.trained_model_folder = trained_model_folder
         self.rsc_target = rsc_target
         self.staleness_threshold = staleness_threshold # représente τ0 dans le papier 
+        self.sum_data_size = 0
         self.init()
 
     def __del__(self):
@@ -303,11 +304,12 @@ class FLServer(FederatedLearningServicer):
             self.current_parmQ[resource_name].put(s_model)
             # print(f'\tNOTICE: chunk no: = {i} ')
 
-    def set_clients_local_models(self, resource_name, client_id, l_model, model_transmit_time):
+    def set_clients_local_models(self, resource_name, client_id, l_model, model_transmit_time, data_size):
         # print(resource_name, client_id, sys.getsizeof(l_model), model_transmit_time)
         model = pickle.loads(l_model)
         self.current_clients[resource_name][client_id].model = model
         self.current_clients[resource_name][client_id].model_transmit_time = model_transmit_time
+        self.current_clients[resource_name][client_id].data_size = data_size
         self.client_with_local_model[resource_name][client_id] = self.current_clients[resource_name][client_id]
         self.last_seen = time.time()
         # FedSA trace
@@ -335,14 +337,12 @@ class FLServer(FederatedLearningServicer):
                 print("\t\tcheck_trying", self.check_trying)
 
             force_aggregation = client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING and not self.check_trying
-
             if self.aggregation_method=="async":
                 force_aggregation = client_count > 1 and (time.time() - self.do_wait) >= MAX_WAITING_TIME_FOR_CLIENT_CONTRIBUTION \
                                     and not self.check_trying
             elif self.aggregation_method=="semi-async":
-                force_aggregation = (client_count >= self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING or 
-                               (client_count > 1 and (time.time() - self.do_wait) >= MAX_WAITING_TIME_FOR_CLIENT_CONTRIBUTION)) \
-                               and not self.check_trying
+                force_aggregation = client_count > 1 and (time.time() - self.do_wait) >= MAX_WAITING_TIME_FOR_CLIENT_CONTRIBUTION \
+                                    and not self.check_trying
                                                      
             if force_aggregation:
                 if client_count > 0:
@@ -363,7 +363,7 @@ class FLServer(FederatedLearningServicer):
                     sampled_clients = self.sample_participants(resource_name, client_count, fraction=self.fraction)
                     
                     if self.aggregation_method == "semi-async":
-                        self.process_staleness(resource_name)
+                        #self.process_staleness(resource_name)
                         self.calculate_adaptive_learning_rates(resource_name)
                         
                     model_weights = self.average_fd_model_to_num_of_clients(sampled_clients, resource_name)
@@ -409,7 +409,7 @@ class FLServer(FederatedLearningServicer):
         # Pour chaque client, vérifier si staleness dépasse le threshold
         for client_id in self.current_clients[resource_name]:
             # Récupérer la dernière participation du client
-            if client_id in self.client_last_model_round[resource_name]:
+            if client_id in self.client_last_model_round[resource_name]: # in beginning not true
                 last_round = self.client_last_model_round[resource_name][client_id]
                 # Calculate staleness: difference entre le round actuel and la dernière version du modèle client's
                 staleness = current_round - last_round
@@ -417,8 +417,9 @@ class FLServer(FederatedLearningServicer):
                 if staleness > self.staleness_threshold:
                     pcolors.print_orange("Forcer synchronization pour le client : ", client_id)
                     # Add this client to the list to receive the updated model
-                    if hasattr(self.current_clients[resource_name][client_id], 'fullNames') and self.current_clients[resource_name][client_id].fullNames:
-                        self.client_to_send_global_model[client_id] = self.current_clients[resource_name][client_id].fullNames
+                    # Send last model weights to the client
+                    self.send_global_model(resource_name, client_id)
+            
 
     def calculate_adaptive_learning_rates(self, resource_name):
         """
@@ -457,14 +458,14 @@ class FLServer(FederatedLearningServicer):
         fldr = f'{self.trained_model_folder}/{self.layer}'
         fldr_path = Path(fldr)
         if not fldr_path.exists():
-            fldr.mkdir(parents=True)
+            fldr_path.mkdir(parents=True)
         self.global_model.save(Path(f'{fldr}/{file_name}'))
         # os.chmod(f'{fldr}/{file_name}', stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
         file = f'{fldr}/{file_name}'
         pcolors.print_orange(f'{file_name} saved successfully at location: {fldr}')
         for key in self.client_to_send_global_model:
             destination = self.client_to_send_global_model.get(key)
-            p = subprocess.Popen(["scp", file, destination])
+            p = subprocess.Popen(["sshpass", "-p", "changeme", "scp", file, destination])
             sts = os.waitpid(p.pid, 0)
             pcolors.print_orange(f'\tsend file to {destination}, statistics: {sts}')
 
@@ -482,37 +483,19 @@ class FLServer(FederatedLearningServicer):
 
         return train_MSe, test_MSE_loss, train_anomalous_data, test_anomalous_data, threshold
 
-    def send_global_model(self, resource_name):
+    def send_global_model(self, resource_name, client_id):
         # Work round to make it wait and don't return immediately
         # logging.debug('in send model ', self.current_parmQ.qsize())
         # Inclure adaptive learning rate
-        if len(self.client_with_local_model_copy[resource_name]) == 0:
-            parms = self.current_parmQ[resource_name].get()
-            print('\n-----------------send_global_model-----[None]---------')
-
-            if self.total_rounds > self.current_round[resource_name]:
-                print("FL training completed")
-            # Pour semi-async, inclure adaptive learning rate si dispo pour le client
-            learning_rate = None
-            if self.aggregation_method == "semi-async" and self.client_id in self.client_learning_rates[resource_name]:
-                learning_rate = self.client_learning_rates[resource_name][self.client_id]
-                print("Learning rate : ",  learning_rate, "Pour client : ", self.client_id)
-            #modifier le fichier proto pour envoyer le learning rate
-            return Model(parameters=parms,
-                         round=self.current_round[resource_name],
-                         resource_name=resource_name,
-                         trainingDone=self.total_rounds > self.current_round[resource_name],
-                         learning_rate=learning_rate)
-
-        for x in range(len(self.client_with_local_model_copy)):
-            parms = self.current_parmQ[resource_name].get()
-            print('\n-----------------send_global_model-----------------')
-            #modifie le fichier proto pour envoyer learning rate.
-            return Model(parameters=parms,
-                         round=self.current_round[resource_name],
-                         resource_name=resource_name,
-                         trainingDone=self.total_rounds > self.current_round[resource_name],
-                         learning_rate=learning_rate)
+        print("Current round: ", self.current_round[resource_name])
+        parms = self.current_parmQ[resource_name].get()
+        print('\n-----send_global_model for client:', client_id, ' -----------------')
+        learning_rate = self.aggregation_method == "semi-async" if self.client_learning_rates[resource_name][client_id] else self.lr
+        return Model(parameters=parms,
+                     round=self.current_round[resource_name],
+                     resource_name=resource_name,
+                     trainingDone=self.total_rounds > self.current_round[resource_name],
+                     learning_rate=learning_rate)
 
     def get_average_model_transmission_time(self, participants):
         time_sum = 0
@@ -565,51 +548,61 @@ class FLServer(FederatedLearningServicer):
 
         local_params = np.array(local_params, dtype=object)
         avg_model = np.mean(local_params, axis=0, dtype=object)
+        print("Average model is: ", avg_model)
         return avg_model
+    
     
     def average_fedsa_models(self, sampled_client_keys, resource_name):
         """
-        FedSA weighted averaging according to Eq. (5) in the paper.
-        Since we don't have access to data sizes, we'll use equal weighting for clients
-        but still account for the previous global model as specified in the FedSA algorithm.
+        FedSA Eq5.
+        La formule générale est: w_k = (1-∑βᵢ)*w_(k-1) + ∑βᵢ*x_i^k
+        où:
+        - w_k est le nouveau modèle global
+        - w_(k-1) est le modèle global précédent
+        - x_i^k sont les modèles clients
+        - βᵢ sont les coefficients de pondération basés sur la taille des données
         """
-        # Get client models
-        client_models = []
-        for key_ in sampled_client_keys:
-            local_weights = self.client_with_local_model_copy[resource_name][key_].model
-            client_models.append(local_weights)
         
-        if not client_models:
-            return self.current_global_model  # Return previous model if no clients
+        # Vérifier s'il y a des clients sélectionnés
+        if not sampled_client_keys:
+            print("Aucun client sélectionné pour l'agrégation")
+            return self.current_global_model if self.current_global_model is not None else self.global_model.get_weights()
         
-        # Convert to numpy array
-        client_models = np.array(client_models, dtype=object)
-        
-        # Since we don't have data sizes, use equal weighting
-        client_count = len(sampled_client_keys)
-        weight_per_client = 1.0 / client_count
-        
-        # Calculate total weight of client models
-        total_client_weight = client_count * weight_per_client  # This should be 1.0
-        
-        # Use FedSA formula: (1-Σβi)*wk-1 + Σβi*xi_k
-        # For equal weighting, βi = 1/N for each client i
-        
-        # Average the client models first
-        client_models_avg = np.mean(client_models, axis=0, dtype=object)
-        
-        # If previous global model exists, incorporate it according to FedSA formula
+        print(f"Agrégation FedSA avec {len(sampled_client_keys)} clients")
+        print("Global data size is: ", self.sum_data_size)
+        # Initialize weights with the current global model weights
         if self.current_global_model is not None:
-            # Weighted combination: (1-1.0)*wk-1 + 1.0*avg_client_models
-            # Since we're using all the weight for clients, this is just the client average
-            avg_model = client_models_avg
+            global_weights = self.current_global_model
         else:
-            # If no previous model, just use average of client models
-            avg_model = client_models_avg
+            global_weights = self.global_model.get_weights()
         
-        return avg_model
-
-
+        # Create properly structured arrays for aggregation
+        local_params = []
+        beta = 0
+        beta_values = []
+        
+        # First pass: collect models and calculate beta values
+        for i, key_ in enumerate(sampled_client_keys):
+            client = self.client_with_local_model_copy[resource_name][key_]
+            local_model = client.model
+            local_params.append(local_model)
+            # Calculate the beta value for this client
+            di = client.data_size
+            beta_i = di / self.sum_data_size
+            beta_values.append(beta_i)
+            beta += beta_i
+        # Convert to numpy array for efficient operations
+        local_params = np.array(local_params, dtype=object)
+        # Calculate the weighted average of local models
+        weighted_avg = np.zeros_like(local_params[0], dtype=object)
+        for i, model in enumerate(local_params):
+            weighted_avg += beta_values[i] * model
+        gb_weights = np.array(global_weights, dtype=object)
+        final_model = (1 - beta) * gb_weights + weighted_avg
+        print(f"Agrégation FedSA - Round {self.current_round[resource_name]}:")
+        print(f"- Nombre de clients: {len(sampled_client_keys)}")
+        return final_model
+    
     def sample_clients_(self):
         """Select some fraction of all clients."""
 
@@ -644,10 +637,12 @@ class FLServer(FederatedLearningServicer):
             l_model = request.parameters
             client_id = request.client.clientId
             resource_name = request.resource_name
+            data_size = request.data_size
             self.set_clients_local_models(resource_name,
                                           client_id,
                                           l_model,
-                                          model_transmit_time)
+                                          model_transmit_time,
+                                          data_size)
 
             # self.training_end[resource_name] = False
 
@@ -674,21 +669,25 @@ class FLServer(FederatedLearningServicer):
     def TheMessageCPU(self, request, context):
         # print('Entry point')
         self.received_messages(request)
-        return self.send_global_model(CPU)
+        client_id = request.client.clientId
+        return self.send_global_model(CPU, client_id)
 
         # return ms.Info(clientId = 1, msgId = CPU, result = 12, round = 1)
 
     def TheMessageMemory(self, request, context):
         self.received_messages(request)
-        return self.send_global_model('Memory')
+        client_id = request.client.clientId
+        return self.send_global_model('Memory', client_id)
 
     def TheMessageNW(self, request, context):
         self.received_messages(request)
-        return self.send_global_model('NW')
+        client_id = request.client.clientId
+        return self.send_global_model('NW', client_id)
 
     def TheMessageDisk(self, request, context):
         self.received_messages(request)
-        return self.send_global_model('Disk')
+        client_id = request.client.clientId
+        return self.send_global_model('Disk', client_id)
 
     def LocalModel(self, request, context):
         self.counter += 1
@@ -702,7 +701,8 @@ class FLServer(FederatedLearningServicer):
 
             l_model = request.parameters
             client_id = request.client.clientId
-            self.set_clients_local_models(client_id, l_model, model_transmit_time)
+            data_size = request.data_size
+            self.set_clients_local_models(client_id, l_model, model_transmit_time, data_size)
 
             print(f'{self.current_round} {self.total_rounds}')
 
@@ -710,15 +710,26 @@ class FLServer(FederatedLearningServicer):
 
         return self.send_global_model()
 
-    # NOT USED ANY MORE
+    # Sending global model after polling
     def GlobalModel(self, request, context):
-        idx = 0
-        print(f'[3] Send global model[{2}]  [{idx}]')
-        parms = self.current_parmQ.get()
-        response = Model(parameters=parms, round=self.current_round, modelChunkCount=self.chunk_count)
-        # response = Model(parameters=self.current_parm[idx], round=self.current_round, modelChunkCount=self.chunk_count)
-
-        return response
+        resource_name = request.resource_name
+        current_round = self.current_round[resource_name]
+        client_id = request.client.clientId
+        # Pour chaque client, vérifier si staleness dépasse le threshold
+        if client_id in self.client_last_model_round[resource_name]:
+            last_round = 0
+            # Calculate staleness: difference entre le round actuel and la dernière version du modèle client's
+            staleness = current_round - last_round
+            # Si staleness dépasse le threshold, forcer la distribution du modèle au client
+            if staleness > self.staleness_threshold:
+                pcolors.print_orange("Forcer synchronization pour le client : ", client_id)
+                # Add this client to the list to receive the updated model
+                # Send last model weights to the client
+                return ModelResponse(has_update=True, model=self.send_global_model(resource_name, client_id))
+            else:
+                return ModelResponse(has_update=False)
+        else: # client didn't start any training yet
+            return ModelResponse(has_update=False)
 
     def Heartbeat(self, request, context):
         self.a += 1
@@ -741,6 +752,7 @@ class FLServer(FederatedLearningServicer):
         client_id = clientCredentials.clientId
         client_name = clientCredentials.clientName
         resource_name = request.resource_name
+        data_size = request.data_size
         participant = Participant(client_id=client_id, name=client_name)
 
         pcolors.print_purple("self.total_rounds before:", self.total_rounds)
@@ -753,6 +765,8 @@ class FLServer(FederatedLearningServicer):
         if client_id not in self.current_clients:
             self.current_clients[resource_name][client_id] = participant
             self.COUNT_REGISTERED_CLIENTS += 1
+            self.sum_data_size += data_size
+            print("Current data size is: ", self.sum_data_size)
             print(cc.Blue, f'{self.COUNT_REGISTERED_CLIENTS} {client_name} [{client_id}] registered successfully ',
                   cc.Color_Off)
             client_registered = True

@@ -1,7 +1,7 @@
 import fileinput
 import time
 
-from server_multi_current import FLServer, ModelTypeStruct
+from server_multi_current_semi import FLServer, ModelTypeStruct
 from AutoencoderModels import karas_model
 
 from AutoencoderModels.lstmAoencoders import KerasLSTMModel_M1

@@ -31,7 +31,18 @@ message Model {
      */
     int32 modelChunkCount = 6;
     float act_time = 7;
-    float learning_rate = 8;
+    float data_size = 8;
+    float learning_rate = 9;
+}
+
+message RefreshModel {
+    ClientCredentials client = 1; // name of the person who wrote the message
+    string resource_name = 2;
+}
+
+message ModelResponse {
+    bool has_update = 1; // name of the person who wrote the message
+    Model model = 2;
 }
 
 message Pulse{
@@ -88,13 +99,13 @@ message RegistrationParams{
      bool verbose = 2;
      string resource_name=3;
      int32 client_count =4;
+     float data_size = 5;
 }
 
 service FederatedLearning {
     rpc InitiateFlTraining (ClientCredentials) returns (FLInitializationParameters_);
    // rpc GetLocalModel (Empty) returns (stream Model); // the call which is streaming (open connection)
-    rpc GlobalModel (Empty) returns (Model); // the call which is streaming (open connection)
-    //rpc SendGlobalModel (stream Model) returns (Empty);
+    rpc GlobalModel (RefreshModel) returns (ModelResponse); // the call which is streaming (open connection)
 
     rpc LocalModel (Model) returns (Model);
     rpc TrailFunction (ClientCredentials) returns (FLInitializationParameters_);

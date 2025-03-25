@@ -261,9 +261,21 @@ class Client:
         # We extend it to 3000 to solve the problem in
         # train_predicted = model.predict(train_data)
         sys.setrecursionlimit(3000)
+        # thread for checking staleness
+        threading.Thread(target=self.poll_for_updates, daemon=True).start()
 
     # TODO GET WEIGHTs
     # TODO loacl_model added
+    
+    def poll_for_updates(self):
+        while True:
+            time.sleep(60)
+            refresh_model = tr.RefreshModel(client=self.client_crd, resource_name=self.rsc_target)
+            model_response = self.conn.GlobalModel(refresh_model)
+            if(model_response.has_update):
+                self.get_fl_global_model(self.rsc_target, model_response.model)
+            else:
+                print("No staleness for now, no update")
 
     def prepare_model_to_send(self, resource_name, local_model):
         # print(' In def get_model_chunks(self)')
@@ -271,7 +283,7 @@ class Client:
         self.local_model_size = sys.getsizeof(s_model) 
         print(f'model size = {self.local_model_size}')
 
-        return tr.Model(resource_name=resource_name, parameters=s_model, client=self.client_crd, act_time=time.time())
+        return tr.Model(resource_name=resource_name, parameters=s_model, client=self.client_crd, act_time=time.time(), data_size=self.no_training_samples)
 
     def transmit_local_model(self, resource_name, local_model):
         t_start = time.time()
@@ -303,12 +315,14 @@ class Client:
     def get_fl_global_model(self, resource_name, model):
         # print(self.model_type, "<+><"*30)
         # self.current_round = model.round
-        self.global_model_size = sys.getsizeof(pickle.loads(model)) 
+        self.global_model_size = sys.getsizeof(pickle.loads(model.parameters)) 
         g_model = model.parameters
         global_model_weights = pickle.loads(g_model)
         self.global_model[resource_name].set_weights(global_model_weights)
         # print(self.global_model)
-
+        import tensorflow.keras.backend as K        
+        self.global_model[resource_name].optimizer.learning_rate = model.learning_rate
+        print("Updated Learning Rate:", K.get_value(self.global_model[resource_name].optimizer.learning_rate))
         return self.global_model[resource_name]
 
     def select_training_frmwrk(self, training_data, resource_name, g_model):
@@ -336,7 +350,7 @@ class Client:
         # TODO  verbose=True  implement it at  server side
         # try:
         rsp = tr.RegistrationParams(clientCredentials=self.client_crd, verbose=True, resource_name=self.rsc_target,
-                                    client_count=self.client_count)
+                                    client_count=self.client_count, data_size=self.no_training_samples)
 
         print_blue("Try to register client with FL server ")
         t = time.time()
@@ -725,7 +739,7 @@ class Client:
         # threading.Thread(target=self.ready_to_start, args=(MEMORY,)).start()
         # threading.Thread(target=self.ready_to_start, args=(NETWORK,)).start()
         # threading.Thread(target=self.ready_to_start, args=(DISK,)).start()
-
+    
     def produce_json_result(self, resource_name):
         self.print[resource_name]('training_finished')
         #

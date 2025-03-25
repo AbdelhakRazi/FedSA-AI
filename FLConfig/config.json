@@ -1,15 +1,15 @@
 {
   "network": {
-    "url": "172.16.9.147",
+    "url": "0.0.0.0",
     "url_": "[::]",
     "port":3444
   },
   
   "clients":{
   	
-  	"client_1":"student@172.16.9.149:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5",
-  	"client_2":"student@172.16.9.15:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5",
-  	"client_3":"student@172.16.9.146:/home/student/distributed-data-pipeline-system/flad-original-cnam-rt/Output/Models/client/current_global_model.h5"
+  	"client_1":"vboxuser@client-1.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5",
+  	"client_2":"vboxuser@client-2.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5",
+    "client_3":"vboxuser@client-2.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5"
   },
 
   "COMMENTS_": "setting can be NONE, ROUND, BATCH, TIME, SAMPLE: select what's dependable ",
