@@ -9,13 +9,13 @@
   	
   	"client_1":"vboxuser@client-1.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5",
   	"client_2":"vboxuser@client-2.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5",
-    "client_3":"vboxuser@client-2.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5"
+    "client_3":"vboxuser@client-3.local:/home/vboxuser/in-network-federaed-learning-for-anomaly-detection/Output/Analysis/physical/current_global_model.h5"
   },
 
   "COMMENTS_": "setting can be NONE, ROUND, BATCH, TIME, SAMPLE: select what's dependable ",
   "setting": "ROUND",
   "global_config":{"seed": 5959, "device": "cpu"},
-  "fed_config": {"C": 1, "K": 3, "R":10, "E": 10, "B": 64,"M":"sync"},
+  "fed_config": {"C": 1, "K": 3, "R":10, "E": 10, "B": 64,"M":"semi-async"},
   "optim_config": {"lr": 0.01, "momentum": 0.9, "optim": "ADAM"},
   "dataset_shape":{"no_samples": 1000, "feature_size" : 26},
 

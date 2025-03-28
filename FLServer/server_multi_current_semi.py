@@ -115,7 +115,7 @@ DISK = 'Disk'
 
 class FLServer(FederatedLearningServicer):
     def __init__(self, train_data, test_data, client_count=0,
-                 trained_model_folder="", rsc_target="unknown", layer="unknown", staleness_threshold=3):
+                 trained_model_folder="", rsc_target="unknown", layer="unknown"):
         self.layer = layer
         self.train_data = train_data
         self.test_data = test_data
@@ -131,7 +131,6 @@ class FLServer(FederatedLearningServicer):
         self.MAX_ACCEPTED_CLIENTS_FOR_TRAINING = client_count
         self.trained_model_folder = trained_model_folder
         self.rsc_target = rsc_target
-        self.staleness_threshold = staleness_threshold # représente τ0 dans le papier 
         self.sum_data_size = 0
         self.init()
 
@@ -235,7 +234,7 @@ class FLServer(FederatedLearningServicer):
 
     def init_parameters(self, total_rounds,aggregation_method, data_splits_count, local_epochs, batch_size=24, learning_rate=0.003,
                         sampling_fraction=1,
-                        optimizer='ADAM', staleness_threshold=3):
+                        optimizer='ADAM', staleness_threshold=1):
         self.fraction = sampling_fraction
 
         # TODO [remember], as dataset is very large, is split into a number (14) files
@@ -365,7 +364,6 @@ class FLServer(FederatedLearningServicer):
                     if self.aggregation_method == "semi-async":
                         #self.process_staleness(resource_name)
                         self.calculate_adaptive_learning_rates(resource_name)
-                        
                     model_weights = self.average_fd_model_to_num_of_clients(sampled_clients, resource_name)
                     self.current_global_model = model_weights
                     self.send_aggregated_model(resource_name, pickle.dumps(model_weights), client_count)
@@ -399,27 +397,6 @@ class FLServer(FederatedLearningServicer):
             print("=" * 80)
             peep()  # MAKE SOUND
             self.training_end[resource_name] = True
-
-    def process_staleness(self, resource_name):
-        """
-        Staleness pour l'algorithme FedSA.
-        Le but est de vérifier staleness pour tout les clients et forcer la synchronization si nécessaire.
-        """
-        current_round = self.current_round[resource_name]
-        # Pour chaque client, vérifier si staleness dépasse le threshold
-        for client_id in self.current_clients[resource_name]:
-            # Récupérer la dernière participation du client
-            if client_id in self.client_last_model_round[resource_name]: # in beginning not true
-                last_round = self.client_last_model_round[resource_name][client_id]
-                # Calculate staleness: difference entre le round actuel and la dernière version du modèle client's
-                staleness = current_round - last_round
-                # Si staleness dépasse le threshold, forcer la distribution du modèle au client
-                if staleness > self.staleness_threshold:
-                    pcolors.print_orange("Forcer synchronization pour le client : ", client_id)
-                    # Add this client to the list to receive the updated model
-                    # Send last model weights to the client
-                    self.send_global_model(resource_name, client_id)
-            
 
     def calculate_adaptive_learning_rates(self, resource_name):
         """
@@ -486,16 +463,28 @@ class FLServer(FederatedLearningServicer):
     def send_global_model(self, resource_name, client_id):
         # Work round to make it wait and don't return immediately
         # logging.debug('in send model ', self.current_parmQ.qsize())
-        # Inclure adaptive learning rate
-        print("Current round: ", self.current_round[resource_name])
-        parms = self.current_parmQ[resource_name].get()
-        print('\n-----send_global_model for client:', client_id, ' -----------------')
-        learning_rate = self.aggregation_method == "semi-async" if self.client_learning_rates[resource_name][client_id] else self.lr
-        return Model(parameters=parms,
-                     round=self.current_round[resource_name],
-                     resource_name=resource_name,
-                     trainingDone=self.total_rounds > self.current_round[resource_name],
-                     learning_rate=learning_rate)
+        learning_rate = self.lr
+        if self.current_round[resource_name] > 0 and self.aggregation_method == "semi-async":
+            learning_rate = self.client_learning_rates[resource_name][client_id]
+        if len(self.client_with_local_model_copy[resource_name]) == 0:
+            parms = self.current_parmQ[resource_name].get()
+            print('\n-----------------send_global_model-----[None]---------')
+            if self.total_rounds > self.current_round[resource_name]:
+                print("FL training completed")
+            return Model(parameters=parms,
+                         round=self.current_round[resource_name],
+                         resource_name=resource_name,
+                         trainingDone=self.total_rounds > self.current_round[resource_name],
+                         learning_rate=learning_rate)
+
+        for x in range(len(self.client_with_local_model_copy)):
+            parms = self.current_parmQ[resource_name].get()
+            print('\n-----------------send_global_model-----------------')
+            return Model(parameters=parms,
+                         round=self.current_round[resource_name],
+                         resource_name=resource_name,
+                         trainingDone=self.total_rounds > self.current_round[resource_name],
+                         learning_rate=learning_rate)
 
     def get_average_model_transmission_time(self, participants):
         time_sum = 0
@@ -548,61 +537,89 @@ class FLServer(FederatedLearningServicer):
 
         local_params = np.array(local_params, dtype=object)
         avg_model = np.mean(local_params, axis=0, dtype=object)
-        print("Average model is: ", avg_model)
+        print("aggergated")
         return avg_model
     
     
+    # def average_fedsa_models(self, sampled_client_keys, resource_name):
+    #     """
+    #     FedSA Eq5.
+    #     La formule générale est: w_k = (1-∑βᵢ)*w_(k-1) + ∑βᵢ*x_i^k
+    #     où:
+    #     - w_k est le nouveau modèle global
+    #     - w_(k-1) est le modèle global précédent
+    #     - x_i^k sont les modèles clients
+    #     - βᵢ sont les coefficients de pondération basés sur la taille des données
+    #     """
+    #     print(f"Agrégation FedSA avec {len(sampled_client_keys)} clients")
+    #     print("Global data size is: ", self.sum_data_size)
+    #     # Initialize weights with the current global model weights
+    #     if self.current_global_model is not None:
+    #         global_weights = self.current_global_model
+    #     else:
+    #         global_weights = self.global_model.get_weights()
+        
+    #     # Create properly structured arrays for aggregation
+    #     local_params = []
+    #     beta = 0
+    #     beta_values = []
+        
+    #     # First pass: collect models and calculate beta values
+    #     for i, key_ in enumerate(sampled_client_keys):
+    #         client = self.client_with_local_model_copy[resource_name][key_]
+    #         local_model = client.model
+    #         local_params.append(local_model)
+    #         # Calculate the beta value for this client
+    #         di = client.data_size
+    #         beta_i = di / self.sum_data_size
+    #         beta_values.append(beta_i)
+    #         beta += beta_i
+    #     # Convert to numpy array for efficient operations
+    #     local_params = np.array(local_params, dtype=object)
+    #     # Calculate the weighted average of local models
+    #     weighted_avg = np.zeros_like(local_params[0], dtype=object)
+    #     for i, model in enumerate(local_params):
+    #         weighted_avg += beta_values[i] * model
+    #     gb_weights = np.array(global_weights, dtype=object)
+    #     final_model = (1 - beta) * gb_weights + weighted_avg
+    #     print(f"Agrégation FedSA - Round {self.current_round[resource_name]}: Completed")
+    #     return final_model
     def average_fedsa_models(self, sampled_client_keys, resource_name):
         """
-        FedSA Eq5.
-        La formule générale est: w_k = (1-∑βᵢ)*w_(k-1) + ∑βᵢ*x_i^k
-        où:
-        - w_k est le nouveau modèle global
-        - w_(k-1) est le modèle global précédent
-        - x_i^k sont les modèles clients
-        - βᵢ sont les coefficients de pondération basés sur la taille des données
+        Optimized FedSA Eq5 aggregation using total data size for proper weighting.
         """
-        
-        # Vérifier s'il y a des clients sélectionnés
-        if not sampled_client_keys:
-            print("Aucun client sélectionné pour l'agrégation")
-            return self.current_global_model if self.current_global_model is not None else self.global_model.get_weights()
-        
         print(f"Agrégation FedSA avec {len(sampled_client_keys)} clients")
         print("Global data size is: ", self.sum_data_size)
-        # Initialize weights with the current global model weights
-        if self.current_global_model is not None:
-            global_weights = self.current_global_model
-        else:
-            global_weights = self.global_model.get_weights()
-        
-        # Create properly structured arrays for aggregation
+
+        # Use current global model weights if available
+        global_weights = self.current_global_model if self.current_global_model is not None else self.global_model.get_weights()
+
         local_params = []
-        beta = 0
         beta_values = []
-        
-        # First pass: collect models and calculate beta values
-        for i, key_ in enumerate(sampled_client_keys):
+
+        # Collect local model weights and compute beta coefficients (relative to total data size)
+        for key_ in sampled_client_keys:
             client = self.client_with_local_model_copy[resource_name][key_]
-            local_model = client.model
-            local_params.append(local_model)
-            # Calculate the beta value for this client
-            di = client.data_size
-            beta_i = di / self.sum_data_size
-            beta_values.append(beta_i)
-            beta += beta_i
-        # Convert to numpy array for efficient operations
+            local_params.append(client.model)  # Assuming `client.model` is a list of NumPy arrays
+            # Compute beta_i based on client data size relative to the total data size
+            beta_values.append(client.data_size / self.sum_data_size)
+
+        # Convert lists to NumPy arrays
         local_params = np.array(local_params, dtype=object)
-        # Calculate the weighted average of local models
-        weighted_avg = np.zeros_like(local_params[0], dtype=object)
-        for i, model in enumerate(local_params):
-            weighted_avg += beta_values[i] * model
-        gb_weights = np.array(global_weights, dtype=object)
-        final_model = (1 - beta) * gb_weights + weighted_avg
-        print(f"Agrégation FedSA - Round {self.current_round[resource_name]}:")
-        print(f"- Nombre de clients: {len(sampled_client_keys)}")
+        beta_values = np.array(beta_values, dtype=np.float64)  # Ensure numerical precision
+
+        # Efficient weighted average computation using NumPy
+        weighted_avg = np.average(local_params, axis=0, weights=beta_values)
+
+        # Compute total weight sum (it should sum to <= 1)
+        beta_sum = beta_values.sum()
+
+        # Compute final model aggregation using weighted average and previous global model
+        final_model = (1 - beta_sum) * np.array(global_weights, dtype=object) + weighted_avg
+
+        print(f"Agrégation FedSA - Round {self.current_round[resource_name]}: Completed")
         return final_model
-    
+
     def sample_clients_(self):
         """Select some fraction of all clients."""
 
@@ -716,20 +733,31 @@ class FLServer(FederatedLearningServicer):
         current_round = self.current_round[resource_name]
         client_id = request.client.clientId
         # Pour chaque client, vérifier si staleness dépasse le threshold
+        # if no aggregation, don't send anything
+        if self.current_global_model is None:
+            return ModelResponse(has_update=False)
         if client_id in self.client_last_model_round[resource_name]:
-            last_round = 0
+            last_round = self.client_last_model_round[resource_name][client_id]
             # Calculate staleness: difference entre le round actuel and la dernière version du modèle client's
             staleness = current_round - last_round
             # Si staleness dépasse le threshold, forcer la distribution du modèle au client
             if staleness > self.staleness_threshold:
                 pcolors.print_orange("Forcer synchronization pour le client : ", client_id)
                 # Add this client to the list to receive the updated model
-                # Send last model weights to the client
+                # Send last model weights to the clientn
+                # update queue for sending
+                self.current_parmQ[resource_name].put(pickle.dumps(self.current_global_model))
                 return ModelResponse(has_update=True, model=self.send_global_model(resource_name, client_id))
             else:
                 return ModelResponse(has_update=False)
-        else: # client didn't start any training yet
-            return ModelResponse(has_update=False)
+        else: # client didn't start any training yet, send him latest model anyway but verify the staleness
+            if((current_round + 1) >= self.staleness_threshold):
+                pcolors.print_orange("Forcer synchronization pour le client : ", client_id)
+                # update queue for sending
+                self.current_parmQ[resource_name].put(pickle.dumps(self.current_global_model))
+                return ModelResponse(has_update=True, model=self.send_global_model(resource_name, client_id))
+            else:
+                return ModelResponse(has_update=False)
 
     def Heartbeat(self, request, context):
         self.a += 1

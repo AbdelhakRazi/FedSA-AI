@@ -273,9 +273,8 @@ class Client:
             refresh_model = tr.RefreshModel(client=self.client_crd, resource_name=self.rsc_target)
             model_response = self.conn.GlobalModel(refresh_model)
             if(model_response.has_update):
+                print("Model is stale, synchronising with Global model")
                 self.get_fl_global_model(self.rsc_target, model_response.model)
-            else:
-                print("No staleness for now, no update")
 
     def prepare_model_to_send(self, resource_name, local_model):
         # print(' In def get_model_chunks(self)')

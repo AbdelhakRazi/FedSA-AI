@@ -27,7 +27,7 @@ class KerasLSTMModel_M0:
         lstm_autoencoder.add(Dropout(0.2, name='dropout_dencode_1'))
         lstm_autoencoder.add(LSTM(feature_size, activation='linear', return_sequences=True, name='dencode2'))
         # lstm_autoencoder.summary()
-        optimizer = keras.optimizers.Adam(lr=lr)
+        optimizer = keras.optimizers.Adam(learning_rate=lr)
         lstm_autoencoder.compile(optimizer=optimizer, loss='mean_squared_error', metrics=['mse'])
         return lstm_autoencoder
 
@@ -46,7 +46,7 @@ class KerasLSTMModel_M1:
             TimeDistributed(Dense(feature_size))])
 
         # model_.summary()
-        optimizer = keras.optimizers.Adam(lr=lr)
+        optimizer = keras.optimizers.Adam(learning_rate=lr)
         model_.compile(optimizer=optimizer, loss='mean_squared_error', metrics=['accuracy', 'mse'])
 
         return model_
@@ -70,7 +70,7 @@ class KerasLSTMModel_M2:
         model_.add(keras.layers.LSTM(units=n_units, return_sequences=True))
         model_.add(keras.layers.Dropout(rate=0.2))
         model_.add(keras.layers.TimeDistributed(keras.layers.Dense(units=feature_size)))
-        optimizer = keras.optimizers.Adam(lr=lr)
+        optimizer = keras.optimizers.Adam(learning_rate=lr)
         model_.compile(optimizer=optimizer, loss='mean_squared_error', metrics=['accuracy', 'mse'])
 
         # model_.summary()
@@ -94,7 +94,7 @@ class KerasLSTMModel_M3:
         model.add(LSTM(latent_unit, activation='relu', return_sequences=True))
         model.add(LSTM(n_units, activation='relu', return_sequences=True))
         model.add(TimeDistributed(Dense(feature_size)))
-        optimizer = keras.optimizers.Adam(lr=lr)
+        optimizer = keras.optimizers.Adam(learning_rate=lr)
         model.compile(optimizer=optimizer, loss='mse')
         #model.summary()
 
@@ -157,7 +157,7 @@ class KerasLSTMModel_M4:
         
         lstm_autoencoder.summary()
         
-        optimizer = keras.optimizers.Adam(lr=lr)
+        optimizer = keras.optimizers.Adam(learning_rate=lr)
         
         lstm_autoencoder.compile(optimizer=optimizer, loss='mean_squared_error', metrics=['mse'])
         
